@@ -51,9 +51,25 @@ func (c *Controller) Acquire(ctx context.Context, room model.RoomID) error {
 		return ErrDoorBusy
 	}
 	door.State = model.DoorInterlocked
-	door.WaitID = c.nextWaitID()
+	waitID := c.nextWaitID()
+	door.WaitID = waitID
 	c.mu.Unlock()
-	return waitForSettle(ctx, c.settleChannel(room), func() {})
+
+	// release undoes the acquisition when the settle wait is cancelled (for
+	// example by the 30-second timeout), restoring the door to available. The
+	// WaitID guard ensures a stale release does not clobber an interlock that
+	// was re-acquired after this owner lost it.
+	release := func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		d, ok := c.doors[room]
+		if !ok || d.WaitID != waitID {
+			return
+		}
+		d.State = model.DoorUnlocked
+		d.WaitID = ""
+	}
+	return waitForSettle(ctx, c.settleChannel(room), release)
 }
 
 func (c *Controller) nextWaitID() string {
