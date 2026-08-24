@@ -187,7 +187,11 @@ func (c *Controller) switchSupplyFanLocked(room model.RoomID, target model.FanID
 	if err := c.driver.Stop(old); err != nil {
 		return &SwitchError{Room: room, Fan: target, Op: "stop", Err: err}
 	}
-	_ = c.driver.Start(target)
+	if err := c.driver.Start(target); err != nil {
+		c.units[target] = model.FanUnit{ID: target, Role: unit.Role, State: model.FanFailed, Airflow: unit.Airflow}
+		c.failures = append(c.failures, model.SwitchEvent{Room: room, From: old, To: target, At: time.Now()})
+		return &SwitchError{Room: room, Fan: target, Op: "start", Err: err}
+	}
 	c.units[target] = model.FanUnit{ID: target, Role: unit.Role, State: model.FanRunning, Airflow: unit.Airflow}
 	c.events = append(c.events, model.SwitchEvent{Room: room, From: old, To: target, At: time.Now()})
 	return nil
