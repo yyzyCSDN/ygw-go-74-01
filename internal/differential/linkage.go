@@ -9,7 +9,6 @@ import (
 type Linkage struct {
 	mu       sync.RWMutex
 	targets  map[model.RoomID]model.FanID
-	pending  map[model.RoomID]model.FanID
 	revision map[model.RoomID]int
 	history  map[model.RoomID][]model.FanID
 }
@@ -17,7 +16,6 @@ type Linkage struct {
 func NewLinkage() *Linkage {
 	return &Linkage{
 		targets:  make(map[model.RoomID]model.FanID),
-		pending:  make(map[model.RoomID]model.FanID),
 		revision: make(map[model.RoomID]int),
 		history:  make(map[model.RoomID][]model.FanID),
 	}
@@ -27,17 +25,21 @@ func (l *Linkage) SetTarget(room model.RoomID, fan model.FanID) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.targets[room] = fan
-	l.pending[room] = fan
 	l.revision[room]++
 }
 
+// ApplyFanSwitch commits a runtime fan switch as the room's active linkage
+// target. The new fan becomes the maintenance target immediately so that
+// pressure-differential linkage follows the running unit instead of remaining
+// pinned to the previous one.
 func (l *Linkage) ApplyFanSwitch(room model.RoomID, fan model.FanID) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if fan == "" {
 		return
 	}
-	l.pending[room] = fan
+	l.targets[room] = fan
+	l.history[room] = append(l.history[room], fan)
 	l.revision[room]++
 }
 

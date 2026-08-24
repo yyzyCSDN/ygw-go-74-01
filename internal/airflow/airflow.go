@@ -119,8 +119,20 @@ func (c *Controller) switchExhaustFanLocked(room model.RoomID, target model.FanI
 		return &SwitchError{Room: room, Fan: target, Op: "start", Err: err}
 	}
 	c.units[target] = model.FanUnit{ID: target, Role: unit.Role, State: model.FanRunning, Airflow: unit.Airflow}
-	c.refreshLinkage(room, target)
+	c.stopExhaust(room, old, target)
+	c.refreshLinkage(room, old, target)
 	return nil
+}
+
+// stopExhaust marks the previously running exhaust unit as stopped so that
+// currentExhaust and the linkage reflect the single active unit after a switch.
+func (c *Controller) stopExhaust(room model.RoomID, old, target model.FanID) {
+	if old == "" || old == target {
+		return
+	}
+	if prev, ok := c.units[old]; ok && prev.Role == model.FanExhaust {
+		c.units[old] = model.FanUnit{ID: prev.ID, Role: prev.Role, State: model.FanStopped, Airflow: prev.Airflow}
+	}
 }
 
 func (c *Controller) currentExhaust(room model.RoomID) model.FanID {
@@ -138,16 +150,11 @@ func (c *Controller) currentExhaust(room model.RoomID) model.FanID {
 	return ""
 }
 
-func (c *Controller) refreshLinkage(room model.RoomID, target model.FanID) {
+func (c *Controller) refreshLinkage(room model.RoomID, old, target model.FanID) {
 	if c.linkage == nil {
 		return
 	}
-	previous := c.currentExhaust(room)
-	if previous != "" {
-		c.linkage.ApplyFanSwitch(room, previous)
-		c.events = append(c.events, model.SwitchEvent{Room: room, From: previous, To: target, At: time.Now()})
-		return
-	}
+	c.events = append(c.events, model.SwitchEvent{Room: room, From: old, To: target, At: time.Now()})
 	c.linkage.ApplyFanSwitch(room, target)
 }
 
