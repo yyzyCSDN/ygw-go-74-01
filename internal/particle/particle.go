@@ -35,6 +35,12 @@ func (m *Monitor) WriteSample(sample model.ParticleSample) error {
 		return err
 	}
 	m.table.Write(normalized.Point, normalized.Count, normalized.Volume, normalized.At)
+	// The latest reading now lives in the table. Drop any cached copy so the
+	// alarm center reloads the new value on its next evaluation instead of
+	// judging against a stale reading and missing an over-limit condition.
+	if m.cache != nil {
+		m.cache.Invalidate(normalized.Point)
+	}
 	return nil
 }
 

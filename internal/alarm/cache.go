@@ -74,12 +74,21 @@ func (c *Cache) load(point model.PointID) (model.ParticleReading, bool) {
 	return reading, true
 }
 
+// Invalidate drops the cached reading for point so the next Get reloads the
+// current value from the source. Marking the entry stale in place would leave a
+// stale ParticleReading in the map, and Get serves any present entry directly —
+// so removing the entry is what actually forces a reload.
 func (c *Cache) Invalidate(point model.PointID) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if entry, ok := c.entries[point]; ok {
-		entry.Count = -1
-		c.entries[point] = entry
+	delete(c.entries, point)
+	bucket := c.bucket(point)
+	members := c.buckets[bucket]
+	for i, member := range members {
+		if member == point {
+			c.buckets[bucket] = append(members[:i], members[i+1:]...)
+			break
+		}
 	}
 	c.epoch++
 }
@@ -87,12 +96,11 @@ func (c *Cache) Invalidate(point model.PointID) {
 func (c *Cache) InvalidateBucket(point model.PointID) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for _, member := range c.buckets[c.bucket(point)] {
-		if entry, ok := c.entries[member]; ok {
-			entry.Count = -1
-			c.entries[member] = entry
-		}
+	bucket := c.bucket(point)
+	for _, member := range c.buckets[bucket] {
+		delete(c.entries, member)
 	}
+	delete(c.buckets, bucket)
 	c.epoch++
 }
 
