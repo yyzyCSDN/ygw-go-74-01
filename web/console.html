@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>洁净室/手术室环境联控控制台</title>
+<style>
+body { font-family: "Microsoft YaHei", sans-serif; margin: 0; background: #f2f5f8; color: #22303f; }
+header { background: #0e5a8a; color: #fff; padding: 14px 22px; }
+header h1 { margin: 0; font-size: 20px; }
+main { padding: 18px 22px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.card { background: #fff; border: 1px solid #dbe3ea; border-radius: 8px; padding: 14px; }
+.card h3 { margin: 0 0 8px; font-size: 16px; }
+.row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #eef2f6; }
+.row:last-child { border-bottom: none; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; color: #fff; }
+.ok { background: #2e9e5b; }
+.warn { background: #d9822b; }
+.crit { background: #c23b3b; }
+button { background: #0e5a8a; color: #fff; border: none; border-radius: 5px; padding: 6px 12px; cursor: pointer; }
+button:hover { background: #0b4a72; }
+</style>
+</head>
+<body>
+<header><h1>洁净室/手术室环境联控系统</h1></header>
+<main>
+<section class="grid" id="rooms"></section>
+<section>
+<h2>操作</h2>
+<p>
+<button onclick="post('/api/v1/disinfection/start', {Room:'OR-1'})">OR-1 开始消毒</button>
+<button onclick="post('/api/v1/disinfection/complete', {Room:'OR-1'})">OR-1 消毒完成</button>
+<button onclick="post('/api/v1/ventilation', {Room:'OR-1'})">OR-1 开始通风</button>
+<button onclick="post('/api/v1/settle', {Room:'OR-1'})">OR-1 气流稳定</button>
+<button onclick="post('/api/v1/fan/switch', {Room:'OR-1',Role:1,Target:'EX-2'})">OR-1 排风切 EX-2</button>
+<button onclick="refresh()">刷新</button>
+</p>
+</section>
+</main>
+<script>
+async function api(path, options) {
+  const resp = await fetch(path, options);
+  return resp.json();
+}
+async function post(path, body) {
+  const data = await api(path, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  console.log(data);
+  refresh();
+}
+function badge(level) {
+  if (level === 'critical') return '<span class="badge crit">critical</span>';
+  if (level === 'warning') return '<span class="badge warn">warning</span>';
+  return '<span class="badge ok">ok</span>';
+}
+async function refresh() {
+  const status = await api('/api/v1/status');
+  const alarms = await api('/api/v1/alarms');
+  const rooms = document.getElementById('rooms');
+  rooms.innerHTML = '';
+  for (const room of status.rooms) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = '<h3>' + room.room + ' ' + room.phase + '</h3>' +
+      '<div class="row"><span>压差</span><span>' + room.pressure + ' (' + room.last_pa + ' Pa)</span></div>' +
+      '<div class="row"><span>送排风模式</span><span>' + room.airflow_mode + '</span></div>' +
+      '<div class="row"><span>气流稳定</span><span>' + room.airflow_stable + '</span></div>' +
+      '<div class="row"><span>联动目标</span><span>' + room.linkage_target + '</span></div>' +
+      '<div class="row"><span>门禁</span><span>' + room.door + '</span></div>';
+    rooms.appendChild(card);
+  }
+  const alarmBox = document.createElement('div');
+  alarmBox.className = 'card';
+  let html = '<h3>告警 ' + alarms.alarms.length + '</h3>';
+  for (const alarm of alarms.alarms) {
+    html += '<div class="row"><span>' + alarm.id + '</span>' + badge(alarm.level) + '</div>';
+  }
+  alarmBox.innerHTML = html;
+  rooms.appendChild(alarmBox);
+}
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
